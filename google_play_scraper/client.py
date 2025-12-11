@@ -14,7 +14,7 @@ from .internal.request_constants import LIST_PAYLOAD_TEMPLATE
 from .models import AppDetails, AppOverview, Review
 
 
-def _clean_desc(html: str) -> str:
+def _clean_desc(html: Optional[str]) -> str:
     # Very simple HTML stripper for description text
     return re.sub(r'<br>', '\r\n', html) if html else ""
 
@@ -297,6 +297,9 @@ class GooglePlayClient:
             return [], None
 
         if not reviews_root:
+            return [], None
+        # Defensive: ensure the root is an iterable of review arrays; otherwise bail out
+        if not isinstance(reviews_root, list):
             return [], None
 
         results = []

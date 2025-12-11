@@ -1,0 +1,4 @@
+include README.md
+include LICENSE
+recursive-include google_play_scraper *.py
+include google_play_scraper/py.typed

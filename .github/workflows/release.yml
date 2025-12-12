@@ -59,9 +59,17 @@ jobs:
         with:
           print-hash: true
 
+      - name: Compute safe artifact name
+        id: artifact
+        shell: bash
+        run: |
+          REF_NAME="${GITHUB_REF_NAME}"
+          SAFE_REF="${REF_NAME//\//-}"
+          echo "safe_name=dist-${SAFE_REF}" >> "$GITHUB_OUTPUT"
+
       - name: Upload dist artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ format('dist-{0}', replace(github.ref_name, '/', '-')) }}
+          name: ${{ steps.artifact.outputs.safe_name }}
           path: dist/*

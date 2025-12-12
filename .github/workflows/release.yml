@@ -36,13 +36,18 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           TAG="${TAG#releases/}"
-          PKG_VER=$(python -c "import google_play_scraper as m; print(m.__version__)")
+          # Read version directly from the source file to avoid importing runtime deps at this stage
+          PKG_VER=$(python -c "import re, pathlib; print(re.search(r'__version__\\s*=\\s*\\\"([^\\\"]+)\\\"', pathlib.Path('google_play_scraper/__init__.py').read_text()).group(1))")
           echo "Tag: $TAG"
           echo "Package version: $PKG_VER"
           if [ "$TAG" != "$PKG_VER" ]; then
             echo "Error: tag ($TAG) does not match package version ($PKG_VER)" >&2
             exit 1
           fi
+
+      - name: Install runtime dependencies (for build)
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Build sdist and wheel
         run: |

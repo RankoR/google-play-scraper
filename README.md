@@ -2,7 +2,6 @@
 
 [![Tests](https://github.com/RankoR/google-play-scraper/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/RankoR/google-play-scraper/actions/workflows/tests.yml)
 [![PyPI version](https://img.shields.io/pypi/v/play-store-scraper-ng.svg)](https://pypi.org/project/play-store-scraper-ng/)
-[![Coverage](https://codecov.io/gh/RankoR/google-play-scraper/branch/master/graph/badge.svg)](https://codecov.io/gh/RankoR/google-play-scraper)
 
 Modern, typed Google Play Store scraper client for Python. Fetch app details, search results, top lists, reviews, and search suggestions with a clean API and Pydantic models.
 

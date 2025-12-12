@@ -4,7 +4,7 @@ from .exceptions import GooglePlayError, AppNotFound
 from .models import AppDetails, AppOverview, Review
 
 # Library version (single-source versioning for packaging)
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "GooglePlayClient",

@@ -47,6 +47,50 @@ for app in results:
 ```
 
 
+## Async Usage
+
+The client also supports `async` usage with `httpx`. Async methods are prefixed with 'a' (e.g., `app` -> `aapp`). All synchronous methods have an asynchronous equivalent.
+
+```python
+import asyncio
+from google_play_scraper import GooglePlayClient, Sort, Collection, Category
+
+async def main():
+    client = GooglePlayClient()
+
+    # Async app details
+    details = await client.aapp("com.whatsapp")
+    print(f"App: {details.title}, Score: {details.score}")
+
+    # Async search
+    results = await client.asearch("photo editor", num=5)
+    for app in results:
+        print(f"Search result: {app.title}")
+
+    # Async list
+    top_free_games = await client.alist(
+        collection=Collection.TOP_FREE,
+        category=Category.GAME,
+        num=10
+    )
+    for app in top_free_games:
+        print(f"Top game: {app.title}")
+
+    # Async reviews
+    reviews, _ = await client.areviews("com.burbn.instagram", sort=Sort.NEWEST, num=5)
+    for r in reviews:
+        print(f"Review by {r.user_name}: {r.text[:50]}...")
+
+    # Async suggestions
+    suggestions = await client.asuggest("video")
+    print(f"Suggestions for 'video': {suggestions}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+
 ## Usage
 
 ### Client initialization

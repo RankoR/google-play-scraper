@@ -12,7 +12,6 @@ Based on and inspired by the original work at https://github.com/facundoolano/go
 
 - Simple high-level client: `GooglePlayClient`
 - Typed data models for responses via Pydantic: `AppDetails`, `AppOverview`, `Review`
-- **Async support**: all methods have an `async` version (e.g., `client.aapp(...)`)
 - Search apps, fetch app details, list collections, reviews with pagination, and query suggestions
 - Locale and country support (e.g., `hl=en`, `gl=us`)
 - Optional throttling, proxy support, and SSL verification control
@@ -161,30 +160,6 @@ client = GooglePlayClient()
 suggestions = client.suggest("photo ed")
 print(suggestions)
 ```
-
-
-## Async Usage
-
-For `asyncio` applications, use the `async` versions of the client methods. Each method is prefixed with an `a` (e.g., `app` -> `aapp`).
-
-```python
-import asyncio
-from google_play_scraper import GooglePlayClient
-
-async def main():
-    client = GooglePlayClient()
-    details = await client.aapp("com.whatsapp")
-    print(details.title)
-
-asyncio.run(main())
-```
-
-All synchronous methods have an `async` counterpart:
-- `client.aapp(...)`
-- `client.asearch(...)`
-- `client.alist(...)`
-- `client.areviews(...)`
-- `client.asuggest(...)`
 
 
 ## Data models

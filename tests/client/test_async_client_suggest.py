@@ -1,125 +1,102 @@
 import json
-import pytest
-from unittest.mock import AsyncMock
+import unittest
+from unittest.mock import patch, AsyncMock
 
 from google_play_scraper.client import GooglePlayClient
 
 
-@pytest.mark.asyncio
-async def test_request_formation(mocker):
-    mock_post = mocker.patch(
-        "google_play_scraper.client.AsyncRequester.post", new_callable=AsyncMock
-    )
-    mocker.patch(
+class TestAsyncClientSuggest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.client = GooglePlayClient()
+
+    @patch(
         "google_play_scraper.client.ScriptDataParser.parse_batchexecute_response",
         return_value=[[], None],
     )
+    @patch("google_play_scraper.client.AsyncRequester.post", new_callable=AsyncMock)
+    async def test_request_formation(self, mock_post, mock_parse):
+        term = "maps"
+        lang = "en"
+        country = "us"
 
-    term = "maps"
-    lang = "en"
-    country = "us"
+        await self.client.asuggest(term=term, lang=lang, country=country)
 
-    client = GooglePlayClient()
-    await client.asuggest(term=term, lang=lang, country=country)
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        self.assertEqual(args[0], "/_/PlayStoreUi/data/batchexecute")
 
-    mock_post.assert_called_once()
-    args, kwargs = mock_post.call_args
-    assert args[0] == "/_/PlayStoreUi/data/batchexecute"
+        params = kwargs["params"]
+        self.assertEqual(params["rpcids"], "IJ4APc")
+        self.assertEqual(params["hl"], lang)
+        self.assertEqual(params["gl"], country)
+        self.assertIn("bl", params)
+        self.assertIn("authuser", params)
+        self.assertIn("soc-app", params)
+        self.assertIn("soc-platform", params)
+        self.assertIn("soc-device", params)
+        self.assertIn("rt", params)
 
-    params = kwargs["params"]
-    assert params["rpcids"] == "IJ4APc"
-    assert params["hl"] == lang
-    assert params["gl"] == country
-    assert "bl" in params
-    assert "authuser" in params
-    assert "soc-app" in params
-    assert "soc-platform" in params
-    assert "soc-device" in params
-    assert "rt" in params
+        form = kwargs["data"]
+        self.assertIn("f.req", form)
+        outer = json.loads(form["f.req"])
+        self.assertIsInstance(outer, list)
+        self.assertEqual(outer[0][0][0], "IJ4APc")
 
-    form = kwargs["data"]
-    assert "f.req" in form
-    outer = json.loads(form["f.req"])
-    assert isinstance(outer, list)
-    assert outer[0][0][0] == "IJ4APc"
+        inner_json = outer[0][0][1]
+        inner = json.loads(inner_json)
+        self.assertEqual(inner, [[None, [term], [10], [2], 4]])
 
-    inner_json = outer[0][0][1]
-    inner = json.loads(inner_json)
-    assert inner == [[None, [term], [10], [2], 4]]
-
-
-@pytest.mark.asyncio
-async def test_happy_path_maps_items_and_skips_none(mocker):
-    mocker.patch(
+    @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
+    @patch(
         "google_play_scraper.client.AsyncRequester.post",
         new_callable=AsyncMock,
         return_value="OK",
     )
-    suggestion_list = [["alpha"], None, ["beta", "extra"]]
-    mocker.patch(
-        "google_play_scraper.client.ScriptDataParser.parse_batchexecute_response",
-        return_value=[[suggestion_list]],
-    )
+    async def test_happy_path_maps_items_and_skips_none(self, mock_post, mock_parse):
+        suggestion_list = [["alpha"], None, ["beta", "extra"]]
+        mock_parse.return_value = [[suggestion_list]]
 
-    client = GooglePlayClient()
-    out = await client.asuggest("al")
-    assert out == ["alpha", "beta"]
+        out = await self.client.asuggest("al")
+        self.assertEqual(out, ["alpha", "beta"])
 
+    async def test_empty_term_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            await self.client.asuggest("")
 
-@pytest.mark.asyncio
-async def test_empty_term_raises_value_error():
-    client = GooglePlayClient()
-    with pytest.raises(ValueError):
-        await client.asuggest("")
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("parsed_data", [[], None])
-async def test_empty_or_none_parsed_data_returns_empty(mocker, parsed_data):
-    mocker.patch(
+    @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
+    @patch(
         "google_play_scraper.client.AsyncRequester.post",
         new_callable=AsyncMock,
         return_value="OK",
     )
-    mocker.patch(
-        "google_play_scraper.client.ScriptDataParser.parse_batchexecute_response",
-        return_value=parsed_data,
-    )
+    async def test_empty_or_none_parsed_data_returns_empty(
+        self, mock_post, mock_parse
+    ):
+        for parsed_data in [[], None]:
+            with self.subTest(parsed_data=parsed_data):
+                mock_parse.return_value = parsed_data
+                self.assertEqual(await self.client.asuggest("m"), [])
 
-    client = GooglePlayClient()
-    assert await client.asuggest("m") == []
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("suggestion_list", [None, []])
-async def test_falsy_suggestion_list_returns_empty(mocker, suggestion_list):
-    mocker.patch(
+    @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
+    @patch(
         "google_play_scraper.client.AsyncRequester.post",
         new_callable=AsyncMock,
         return_value="OK",
     )
-    mocker.patch(
-        "google_play_scraper.client.ScriptDataParser.parse_batchexecute_response",
-        return_value=[[suggestion_list]],
-    )
+    async def test_falsy_suggestion_list_returns_empty(self, mock_post, mock_parse):
+        for suggestion_list in [None, []]:
+            with self.subTest(suggestion_list=suggestion_list):
+                mock_parse.return_value = [[suggestion_list]]
+                self.assertEqual(await self.client.asuggest("ma"), [])
 
-    client = GooglePlayClient()
-    assert await client.asuggest("ma") == []
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "bad_data", [None, 1, [1], [[1]], [[()]]]
-)
-async def test_index_or_type_errors_return_empty(mocker, bad_data):
-    mocker.patch(
+    @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
+    @patch(
         "google_play_scraper.client.AsyncRequester.post",
         new_callable=AsyncMock,
         return_value="OK",
     )
-    mocker.patch(
-        "google_play_scraper.client.ScriptDataParser.parse_batchexecute_response",
-        return_value=bad_data,
-    )
-    client = GooglePlayClient()
-    assert await client.asuggest("q") == []
+    async def test_index_or_type_errors_return_empty(self, mock_post, mock_parse):
+        for bad_data in [None, 1, [1], [[1]], [[()]]]:
+            with self.subTest(bad_data=bad_data):
+                mock_parse.return_value = bad_data
+                self.assertEqual(await self.client.asuggest("q"), [])

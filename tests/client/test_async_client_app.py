@@ -1,6 +1,6 @@
-import pytest
+import unittest
 from datetime import datetime
-from unittest.mock import AsyncMock
+from unittest.mock import patch, AsyncMock
 
 from google_play_scraper.client import GooglePlayClient
 from google_play_scraper.exceptions import AppNotFound
@@ -67,125 +67,111 @@ def ds5_with_root(root):
     return [None, [None, None, root]]
 
 
-@pytest.mark.asyncio
-async def test_happy_path_extracts_and_transforms(mocker):
-    app_id = "com.example.app"
-    html = "<html>dummy</html>"
+class TestAsyncClientApp(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.client = GooglePlayClient()
 
-    mock_get = mocker.patch(
-        "google_play_scraper.client.AsyncRequester.get", new_callable=AsyncMock
-    )
-    mock_get.return_value = html
+    @patch("google_play_scraper.client.ScriptDataParser.parse")
+    @patch("google_play_scraper.client.AsyncRequester.get", new_callable=AsyncMock)
+    async def test_happy_path_extracts_and_transforms(self, mock_get, mock_parse):
+        app_id = "com.example.app"
+        html = "<html>dummy</html>"
+        mock_get.return_value = html
 
-    root = make_root_for_happy_path()
-    ds5 = ds5_with_root(root)
-    mocker.patch("google_play_scraper.client.ScriptDataParser.parse", return_value={"ds:5": ds5})
+        root = make_root_for_happy_path()
+        ds5 = ds5_with_root(root)
+        mock_parse.return_value = {"ds:5": ds5}
 
-    client = GooglePlayClient()
-    details = await client.aapp(app_id)
+        details = await self.client.aapp(app_id)
 
-    assert details.app_id == app_id
-    assert details.title == "My App"
-    assert details.summary == "A short summary"
-    assert str(details.icon) == "https://img.test/icon.png"
-    assert str(details.header_image) == "https://img.test/header.png"
-    assert [str(u) for u in details.screenshots] == ["https://img.test/shot1.png"]
-    assert details.description_html == "Line1<br>Line2"
-    assert details.description == "Line1\r\nLine2"
-    assert details.score_text == "4.5"
-    assert details.score == 4.5
-    assert details.ratings == 1234
-    assert details.reviews == 321
-    assert details.histogram == {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5}
-    assert details.price == 1.99
-    assert details.currency == "USD"
-    assert details.price_text == "$1.99"
-    assert not details.free
-    assert details.available
-    assert not details.offers_iap
-    assert details.developer == "ACME"
-    assert details.developer_id == "ACME_INC"
-    assert details.developer_email == "dev@acme.test"
-    assert str(details.developer_website) == "https://acme.test/"
-    assert details.developer_address == "ACME Street 1"
-    assert str(details.privacy_policy) == "https://acme.test/privacy"
-    assert details.genre == "Tools"
-    assert details.genre_id == "TOOLS"
-    assert details.released == "2020-01-01"
-    assert isinstance(details.updated, datetime)
-    assert details.updated == datetime.fromtimestamp(1_600_000_000)
-    assert details.version == "1.0.0"
-    assert details.recent_changes == "Bug fixes"
+        self.assertEqual(details.app_id, app_id)
+        self.assertEqual(details.title, "My App")
+        self.assertEqual(details.summary, "A short summary")
+        self.assertEqual(str(details.icon), "https://img.test/icon.png")
+        self.assertEqual(str(details.header_image), "https://img.test/header.png")
+        self.assertEqual([str(u) for u in details.screenshots], ["https://img.test/shot1.png"])
+        self.assertEqual(details.description_html, "Line1<br>Line2")
+        self.assertEqual(details.description, "Line1\r\nLine2")
+        self.assertEqual(details.score_text, "4.5")
+        self.assertEqual(details.score, 4.5)
+        self.assertEqual(details.ratings, 1234)
+        self.assertEqual(details.reviews, 321)
+        self.assertEqual(details.histogram, {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5})
+        self.assertEqual(details.price, 1.99)
+        self.assertEqual(details.currency, "USD")
+        self.assertEqual(details.price_text, "$1.99")
+        self.assertFalse(details.free)
+        self.assertTrue(details.available)
+        self.assertFalse(details.offers_iap)
+        self.assertEqual(details.developer, "ACME")
+        self.assertEqual(details.developer_id, "ACME_INC")
+        self.assertEqual(details.developer_email, "dev@acme.test")
+        self.assertEqual(str(details.developer_website), "https://acme.test/")
+        self.assertEqual(details.developer_address, "ACME Street 1")
+        self.assertEqual(str(details.privacy_policy), "https://acme.test/privacy")
+        self.assertEqual(details.genre, "Tools")
+        self.assertEqual(details.genre_id, "TOOLS")
+        self.assertEqual(details.released, "2020-01-01")
+        self.assertIsInstance(details.updated, datetime)
+        self.assertEqual(details.updated, datetime.fromtimestamp(1_600_000_000))
+        self.assertEqual(details.version, "1.0.0")
+        self.assertEqual(details.recent_changes, "Bug fixes")
 
-    mock_get.assert_called_once()
-    called_args, called_kwargs = mock_get.call_args
-    assert called_args[0] == "/store/apps/details"
-    assert "params" in called_kwargs
-    assert called_kwargs["params"]["id"] == app_id
+        mock_get.assert_called_once()
+        called_args, called_kwargs = mock_get.call_args
+        self.assertEqual(called_args[0], "/store/apps/details")
+        self.assertIn("params", called_kwargs)
+        self.assertEqual(called_kwargs["params"]["id"], app_id)
 
+    @patch("google_play_scraper.client.ScriptDataParser.parse")
+    @patch("google_play_scraper.client.AsyncRequester.get", new_callable=AsyncMock)
+    async def test_description_fallback_is_used(self, mock_get, mock_parse):
+        app_id = "com.example.app"
+        mock_get.return_value = "<html>dummy</html>"
 
-@pytest.mark.asyncio
-async def test_description_fallback_is_used(mocker):
-    app_id = "com.example.app"
+        root = []
+        build_nested(root, [12, 0, 0, 1], "Fallback<br>Desc")
+        build_nested(root, [0, 0], "My App")
+        build_nested(
+            root, [51, 1], [None, ["1", 0], ["2", 0], ["3", 0], ["4", 0], ["5", 0]]
+        )
+        build_nested(root, [13, 0], "0")
+        build_nested(root, [18, 0], 1)
+        build_nested(root, [19, 0], 0)
+        build_nested(root, [140, 1, 1, 0, 0, 1], "VARY")
+        build_nested(root, [78, 0], [])
 
-    mock_get = mocker.patch(
-        "google_play_scraper.client.AsyncRequester.get", new_callable=AsyncMock
-    )
-    mock_get.return_value = "<html>dummy</html>"
+        ds5 = ds5_with_root(root)
+        mock_parse.return_value = {"ds:5": ds5}
 
-    root = []
-    build_nested(root, [12, 0, 0, 1], "Fallback<br>Desc")
-    build_nested(root, [0, 0], "My App")
-    build_nested(root, [51, 1], [None, ["1", 0], ["2", 0], ["3", 0], ["4", 0], ["5", 0]])
-    build_nested(root, [13, 0], "0")
-    build_nested(root, [18, 0], 1)
-    build_nested(root, [19, 0], 0)
-    build_nested(root, [140, 1, 1, 0, 0, 1], "VARY")
-    build_nested(root, [78, 0], [])
+        details = await self.client.aapp(app_id)
 
-    ds5 = ds5_with_root(root)
-    mocker.patch("google_play_scraper.client.ScriptDataParser.parse", return_value={"ds:5": ds5})
+        self.assertEqual(details.description_html, "Fallback<br>Desc")
+        self.assertEqual(details.description, "Fallback\r\nDesc")
 
-    client = GooglePlayClient()
-    details = await client.aapp(app_id)
-
-    assert details.description_html == "Fallback<br>Desc"
-    assert details.description == "Fallback\r\nDesc"
-
-
-@pytest.mark.asyncio
-async def test_missing_ds5_raises_app_not_found(mocker):
-    mocker.patch(
+    @patch("google_play_scraper.client.ScriptDataParser.parse", return_value={})
+    @patch(
         "google_play_scraper.client.AsyncRequester.get",
         new_callable=AsyncMock,
         return_value="<html>dummy</html>",
     )
-    mocker.patch("google_play_scraper.client.ScriptDataParser.parse", return_value={})
+    async def test_missing_ds5_raises_app_not_found(self, mock_get, mock_parse):
+        with self.assertRaises(AppNotFound):
+            await self.client.aapp("com.missing.app")
 
-    client = GooglePlayClient()
-    with pytest.raises(AppNotFound):
-        await client.aapp("com.missing.app")
-
-
-@pytest.mark.asyncio
-async def test_malformed_ds5_raises_app_not_found(mocker):
-    mocker.patch(
-        "google_play_scraper.client.AsyncRequester.get",
-        new_callable=AsyncMock,
-        return_value="<html>dummy</html>",
-    )
-    mocker.patch(
+    @patch(
         "google_play_scraper.client.ScriptDataParser.parse",
         return_value={"ds:5": [None, None]},
     )
+    @patch(
+        "google_play_scraper.client.AsyncRequester.get",
+        new_callable=AsyncMock,
+        return_value="<html>dummy</html>",
+    )
+    async def test_malformed_ds5_raises_app_not_found(self, mock_get, mock_parse):
+        with self.assertRaises(AppNotFound):
+            await self.client.aapp("com.example.app")
 
-    client = GooglePlayClient()
-    with pytest.raises(AppNotFound):
-        await client.aapp("com.example.app")
-
-
-@pytest.mark.asyncio
-async def test_empty_app_id_raises_value_error():
-    client = GooglePlayClient()
-    with pytest.raises(ValueError):
-        await client.aapp("")
+    async def test_empty_app_id_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            await self.client.aapp("")

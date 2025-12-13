@@ -13,16 +13,17 @@ class TestAsyncClientSuggest(unittest.IsolatedAsyncioTestCase):
         "google_play_scraper.client.ScriptDataParser.parse_batchexecute_response",
         return_value=[[], None],
     )
-    @patch("google_play_scraper.client.AsyncRequester.post", new_callable=AsyncMock)
-    async def test_request_formation(self, mock_post, mock_parse):
+    @patch("google_play_scraper.client.Requester.apost", new_callable=AsyncMock)
+    async def test_request_formation(self, mock_apost, mock_parse):
         term = "maps"
         lang = "en"
         country = "us"
 
         await self.client.asuggest(term=term, lang=lang, country=country)
 
-        mock_post.assert_called_once()
-        args, kwargs = mock_post.call_args
+        mock_apost.assert_called_once()
+        args, kwargs = mock_apost.call_args
+        # Patched method is called with the path as the first positional arg.
         self.assertEqual(args[0], "/_/PlayStoreUi/data/batchexecute")
 
         params = kwargs["params"]
@@ -48,11 +49,11 @@ class TestAsyncClientSuggest(unittest.IsolatedAsyncioTestCase):
 
     @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
     @patch(
-        "google_play_scraper.client.AsyncRequester.post",
+        "google_play_scraper.client.Requester.apost",
         new_callable=AsyncMock,
         return_value="OK",
     )
-    async def test_happy_path_maps_items_and_skips_none(self, mock_post, mock_parse):
+    async def test_happy_path_maps_items_and_skips_none(self, mock_apost, mock_parse):
         suggestion_list = [["alpha"], None, ["beta", "extra"]]
         mock_parse.return_value = [[suggestion_list]]
 
@@ -65,12 +66,12 @@ class TestAsyncClientSuggest(unittest.IsolatedAsyncioTestCase):
 
     @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
     @patch(
-        "google_play_scraper.client.AsyncRequester.post",
+        "google_play_scraper.client.Requester.apost",
         new_callable=AsyncMock,
         return_value="OK",
     )
     async def test_empty_or_none_parsed_data_returns_empty(
-        self, mock_post, mock_parse
+        self, mock_apost, mock_parse
     ):
         for parsed_data in [[], None]:
             with self.subTest(parsed_data=parsed_data):
@@ -79,11 +80,11 @@ class TestAsyncClientSuggest(unittest.IsolatedAsyncioTestCase):
 
     @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
     @patch(
-        "google_play_scraper.client.AsyncRequester.post",
+        "google_play_scraper.client.Requester.apost",
         new_callable=AsyncMock,
         return_value="OK",
     )
-    async def test_falsy_suggestion_list_returns_empty(self, mock_post, mock_parse):
+    async def test_falsy_suggestion_list_returns_empty(self, mock_apost, mock_parse):
         for suggestion_list in [None, []]:
             with self.subTest(suggestion_list=suggestion_list):
                 mock_parse.return_value = [[suggestion_list]]
@@ -91,11 +92,11 @@ class TestAsyncClientSuggest(unittest.IsolatedAsyncioTestCase):
 
     @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
     @patch(
-        "google_play_scraper.client.AsyncRequester.post",
+        "google_play_scraper.client.Requester.apost",
         new_callable=AsyncMock,
         return_value="OK",
     )
-    async def test_index_or_type_errors_return_empty(self, mock_post, mock_parse):
+    async def test_index_or_type_errors_return_empty(self, mock_apost, mock_parse):
         for bad_data in [None, 1, [1], [[1]], [[()]]]:
             with self.subTest(bad_data=bad_data):
                 mock_parse.return_value = bad_data

@@ -72,11 +72,11 @@ class TestAsyncClientApp(unittest.IsolatedAsyncioTestCase):
         self.client = GooglePlayClient()
 
     @patch("google_play_scraper.client.ScriptDataParser.parse")
-    @patch("google_play_scraper.client.AsyncRequester.get", new_callable=AsyncMock)
-    async def test_happy_path_extracts_and_transforms(self, mock_get, mock_parse):
+    @patch("google_play_scraper.client.Requester.aget", new_callable=AsyncMock)
+    async def test_happy_path_extracts_and_transforms(self, mock_aget, mock_parse):
         app_id = "com.example.app"
         html = "<html>dummy</html>"
-        mock_get.return_value = html
+        mock_aget.return_value = html
 
         root = make_root_for_happy_path()
         ds5 = ds5_with_root(root)
@@ -117,17 +117,18 @@ class TestAsyncClientApp(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(details.version, "1.0.0")
         self.assertEqual(details.recent_changes, "Bug fixes")
 
-        mock_get.assert_called_once()
-        called_args, called_kwargs = mock_get.call_args
+        mock_aget.assert_called_once()
+        called_args, called_kwargs = mock_aget.call_args
+        # Patched method is called with the path as the first positional arg.
         self.assertEqual(called_args[0], "/store/apps/details")
         self.assertIn("params", called_kwargs)
         self.assertEqual(called_kwargs["params"]["id"], app_id)
 
     @patch("google_play_scraper.client.ScriptDataParser.parse")
-    @patch("google_play_scraper.client.AsyncRequester.get", new_callable=AsyncMock)
-    async def test_description_fallback_is_used(self, mock_get, mock_parse):
+    @patch("google_play_scraper.client.Requester.aget", new_callable=AsyncMock)
+    async def test_description_fallback_is_used(self, mock_aget, mock_parse):
         app_id = "com.example.app"
-        mock_get.return_value = "<html>dummy</html>"
+        mock_aget.return_value = "<html>dummy</html>"
 
         root = []
         build_nested(root, [12, 0, 0, 1], "Fallback<br>Desc")
@@ -151,11 +152,11 @@ class TestAsyncClientApp(unittest.IsolatedAsyncioTestCase):
 
     @patch("google_play_scraper.client.ScriptDataParser.parse", return_value={})
     @patch(
-        "google_play_scraper.client.AsyncRequester.get",
+        "google_play_scraper.client.Requester.aget",
         new_callable=AsyncMock,
         return_value="<html>dummy</html>",
     )
-    async def test_missing_ds5_raises_app_not_found(self, mock_get, mock_parse):
+    async def test_missing_ds5_raises_app_not_found(self, mock_aget, mock_parse):
         with self.assertRaises(AppNotFound):
             await self.client.aapp("com.missing.app")
 
@@ -164,11 +165,11 @@ class TestAsyncClientApp(unittest.IsolatedAsyncioTestCase):
         return_value={"ds:5": [None, None]},
     )
     @patch(
-        "google_play_scraper.client.AsyncRequester.get",
+        "google_play_scraper.client.Requester.aget",
         new_callable=AsyncMock,
         return_value="<html>dummy</html>",
     )
-    async def test_malformed_ds5_raises_app_not_found(self, mock_get, mock_parse):
+    async def test_malformed_ds5_raises_app_not_found(self, mock_aget, mock_parse):
         with self.assertRaises(AppNotFound):
             await self.client.aapp("com.example.app")
 

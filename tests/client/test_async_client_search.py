@@ -46,8 +46,8 @@ class TestAsyncClientSearch(unittest.IsolatedAsyncioTestCase):
         "google_play_scraper.client.ScriptDataParser.parse",
         return_value={"ds:1": [["x", [[[[]]]]]]},
     )
-    @patch("google_play_scraper.client.AsyncRequester.get", new_callable=AsyncMock)
-    async def test_price_param_mapping(self, mock_get, mock_parse):
+    @patch("google_play_scraper.client.Requester.aget", new_callable=AsyncMock)
+    async def test_price_param_mapping(self, mock_aget, mock_parse):
         for price_str, expected_val in [
             ("free", 1),
             ("paid", 2),
@@ -56,19 +56,19 @@ class TestAsyncClientSearch(unittest.IsolatedAsyncioTestCase):
         ]:
             with self.subTest(price_str=price_str):
                 await self.client.asearch("maps", price=price_str, lang="en", country="us")
-                _, kwargs = mock_get.call_args
+                _, kwargs = mock_aget.call_args
                 self.assertEqual(kwargs["params"]["price"], expected_val)
                 self.assertEqual(kwargs["params"]["hl"], "en")
                 self.assertEqual(kwargs["params"]["gl"], "us")
 
     @patch("google_play_scraper.client.ScriptDataParser.parse")
     @patch(
-        "google_play_scraper.client.AsyncRequester.get",
+        "google_play_scraper.client.Requester.aget",
         new_callable=AsyncMock,
         return_value="<html>dummy</html>",
     )
     async def test_happy_path_limits_num_and_skips_missing_app_id(
-        self, mock_get, mock_parse
+        self, mock_aget, mock_parse
     ):
         item1 = make_item("com.example.one", "One")
         item2 = make_item("com.example.two", "Two")
@@ -94,11 +94,11 @@ class TestAsyncClientSearch(unittest.IsolatedAsyncioTestCase):
         "google_play_scraper.client.ScriptDataParser.parse", return_value={"ds:5": []}
     )
     @patch(
-        "google_play_scraper.client.AsyncRequester.get",
+        "google_play_scraper.client.Requester.aget",
         new_callable=AsyncMock,
         return_value="<html>dummy</html>",
     )
-    async def test_missing_ds1_returns_empty(self, mock_get, mock_parse):
+    async def test_missing_ds1_returns_empty(self, mock_aget, mock_parse):
         self.assertEqual(await self.client.asearch("q"), [])
 
     @patch(
@@ -106,20 +106,20 @@ class TestAsyncClientSearch(unittest.IsolatedAsyncioTestCase):
         return_value={"ds:1": [[]]},
     )
     @patch(
-        "google_play_scraper.client.AsyncRequester.get",
+        "google_play_scraper.client.Requester.aget",
         new_callable=AsyncMock,
         return_value="<html>dummy</html>",
     )
-    async def test_indexing_error_returns_empty(self, mock_get, mock_parse):
+    async def test_indexing_error_returns_empty(self, mock_aget, mock_parse):
         self.assertEqual(await self.client.asearch("q"), [])
 
     @patch("google_play_scraper.client.ScriptDataParser.parse")
     @patch(
-        "google_play_scraper.client.AsyncRequester.get",
+        "google_play_scraper.client.Requester.aget",
         new_callable=AsyncMock,
         return_value="<html>dummy</html>",
     )
-    async def test_items_none_or_empty_returns_empty(self, mock_get, mock_parse):
+    async def test_items_none_or_empty_returns_empty(self, mock_aget, mock_parse):
         for items_val in [None, []]:
             with self.subTest(items_val=items_val):
                 mock_parse.return_value = {"ds:1": [["x", [[[items_val]]]]]}

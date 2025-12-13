@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, Mock
 
-import requests
+import httpx
 
 from google_play_scraper.internal.request import Requester
 
@@ -9,7 +9,7 @@ from google_play_scraper.internal.request import Requester
 class RequesterGetAndPostTest(unittest.TestCase):
 
     def _make_requester(self):
-        session = Mock(spec=requests.Session)
+        session = Mock(spec=httpx.Client)
         # session will not be used because we mock Requester.request
         return Requester(session=session, throttle=None, default_lang="en", default_country="us")
 

@@ -26,8 +26,8 @@ class TestAsyncClientList(unittest.IsolatedAsyncioTestCase):
         "google_play_scraper.client.ScriptDataParser.parse_batchexecute_response",
         return_value=[],
     )
-    @patch("google_play_scraper.client.AsyncRequester.post", new_callable=AsyncMock)
-    async def test_request_formation_and_optional_age(self, mock_post, mock_parse):
+    @patch("google_play_scraper.client.Requester.apost", new_callable=AsyncMock)
+    async def test_request_formation_and_optional_age(self, mock_apost, mock_parse):
         res = await self.client.alist(
             collection="collX",
             category="catY",
@@ -39,8 +39,9 @@ class TestAsyncClientList(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(res, [])
 
-        (url,), kwargs = mock_post.call_args
-        self.assertEqual(url, "/_/PlayStoreUi/data/batchexecute")
+        args, kwargs = mock_apost.call_args
+        # Patched method is called with the path as the first positional arg.
+        self.assertEqual(args[0], "/_/PlayStoreUi/data/batchexecute")
         self.assertIn("headers", kwargs)
         self.assertEqual(
             kwargs["headers"].get("Content-Type"),
@@ -62,11 +63,11 @@ class TestAsyncClientList(unittest.IsolatedAsyncioTestCase):
 
     @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
     @patch(
-        "google_play_scraper.client.AsyncRequester.post",
+        "google_play_scraper.client.Requester.apost",
         new_callable=AsyncMock,
         return_value="OK",
     )
-    async def test_happy_path_extracts_app_overview_fields(self, mock_post, mock_parse):
+    async def test_happy_path_extracts_app_overview_fields(self, mock_apost, mock_parse):
         app1 = make_app("com.example.one", "One", 0, "USD")
         app2 = make_app("com.example.two", "Two", 1990000, "USD")
         apps_list = [[app1], [app2]]
@@ -98,11 +99,11 @@ class TestAsyncClientList(unittest.IsolatedAsyncioTestCase):
         return_value=[],
     )
     @patch(
-        "google_play_scraper.client.AsyncRequester.post",
+        "google_play_scraper.client.Requester.apost",
         new_callable=AsyncMock,
         return_value="OK",
     )
-    async def test_parsed_data_empty_returns_empty(self, mock_post, mock_parse):
+    async def test_parsed_data_empty_returns_empty(self, mock_apost, mock_parse):
         self.assertEqual(await self.client.alist(), [])
 
     @patch(
@@ -113,22 +114,22 @@ class TestAsyncClientList(unittest.IsolatedAsyncioTestCase):
         return_value=[1],
     )
     @patch(
-        "google_play_scraper.client.AsyncRequester.post",
+        "google_play_scraper.client.Requester.apost",
         new_callable=AsyncMock,
         return_value="OK",
     )
     async def test_extract_exception_returns_empty(
-        self, mock_post, mock_parse, mock_extract
+        self, mock_apost, mock_parse, mock_extract
     ):
         self.assertEqual(await self.client.alist(), [])
 
     @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
     @patch(
-        "google_play_scraper.client.AsyncRequester.post",
+        "google_play_scraper.client.Requester.apost",
         new_callable=AsyncMock,
         return_value="OK",
     )
-    async def test_apps_root_falsy_returns_empty(self, mock_post, mock_parse):
+    async def test_apps_root_falsy_returns_empty(self, mock_apost, mock_parse):
         arr_with_29 = [None] * 29
         arr_with_29[28] = [[]]
         data = [[None, [arr_with_29]]]

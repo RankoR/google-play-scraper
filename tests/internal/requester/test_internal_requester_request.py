@@ -1,20 +1,7 @@
-import sys
-import types
 import unittest
 from unittest.mock import Mock, patch
 
-import requests
-
-# Provide a lightweight stub for pydantic to avoid external dependency during test collection
-if 'pydantic' not in sys.modules:
-    pydantic_stub = types.SimpleNamespace(
-        BaseModel=object,
-        HttpUrl=str,
-        Field=lambda *a, **k: None,
-        BeforeValidator=lambda f: f,
-        ValidationError=Exception,
-    )
-    sys.modules['pydantic'] = pydantic_stub
+import httpx
 
 from google_play_scraper.exceptions import (
     AppNotFound,
@@ -28,12 +15,12 @@ class RequesterRequestTest(unittest.TestCase):
 
     def _make_requester(self, session=None, throttle=None, lang="en", country="us"):
         if session is None:
-            session = Mock(spec=requests.Session)
+            session = Mock(spec=httpx.Client)
         return Requester(session=session, throttle=throttle, default_lang=lang, default_country=country)
 
     @patch.object(Requester, "_wait_for_throttle", autospec=True)
     def test_happy_path_builds_url_merges_headers_and_params_and_returns_text(self, _wait_mock):
-        session = Mock(spec=requests.Session)
+        session = Mock(spec=httpx.Client)
         response = Mock()
         response.raise_for_status.return_value = None
         response.text = "OK"
@@ -84,7 +71,7 @@ class RequesterRequestTest(unittest.TestCase):
 
     @patch.object(Requester, "_wait_for_throttle", autospec=True)
     def test_params_respect_provided_hl_gl(self, _wait_mock):
-        session = Mock(spec=requests.Session)
+        session = Mock(spec=httpx.Client)
         response = Mock()
         response.raise_for_status.return_value = None
         response.text = "OK"
@@ -104,9 +91,14 @@ class RequesterRequestTest(unittest.TestCase):
 
     @patch.object(Requester, "_wait_for_throttle", autospec=True)
     def test_http_error_404_raises_app_not_found_with_url(self, _wait_mock):
-        session = Mock(spec=requests.Session)
+        session = Mock(spec=httpx.Client)
         response = Mock()
-        http_err = requests.HTTPError(response=Mock(status_code=404))
+        request = httpx.Request("GET", "https://example.test")
+        http_err = httpx.HTTPStatusError(
+            message="Not Found",
+            request=request,
+            response=httpx.Response(404, request=request),
+        )
         response.raise_for_status.side_effect = http_err
         session.request.return_value = response
 
@@ -121,9 +113,14 @@ class RequesterRequestTest(unittest.TestCase):
     def test_http_error_429_or_503_raise_quota_exceeded(self, _wait_mock):
         for code in (429, 503):
             with self.subTest(code=code):
-                session = Mock(spec=requests.Session)
+                session = Mock(spec=httpx.Client)
                 response = Mock()
-                http_err = requests.HTTPError(response=Mock(status_code=code))
+                request = httpx.Request("GET", "https://example.test")
+                http_err = httpx.HTTPStatusError(
+                    message="HTTP error",
+                    request=request,
+                    response=httpx.Response(code, request=request),
+                )
                 response.raise_for_status.side_effect = http_err
                 session.request.return_value = response
 
@@ -134,9 +131,14 @@ class RequesterRequestTest(unittest.TestCase):
 
     @patch.object(Requester, "_wait_for_throttle", autospec=True)
     def test_http_error_other_raises_google_play_error_with_code(self, _wait_mock):
-        session = Mock(spec=requests.Session)
+        session = Mock(spec=httpx.Client)
         response = Mock()
-        http_err = requests.HTTPError(response=Mock(status_code=500))
+        request = httpx.Request("GET", "https://example.test")
+        http_err = httpx.HTTPStatusError(
+            message="Server error",
+            request=request,
+            response=httpx.Response(500, request=request),
+        )
         response.raise_for_status.side_effect = http_err
         session.request.return_value = response
 
@@ -149,9 +151,9 @@ class RequesterRequestTest(unittest.TestCase):
 
     @patch.object(Requester, "_wait_for_throttle", autospec=True)
     def test_request_exception_translates_to_google_play_error(self, _wait_mock):
-        session = Mock(spec=requests.Session)
+        session = Mock(spec=httpx.Client)
         # Simulate network-level exception from session.request itself
-        session.request.side_effect = requests.Timeout("read timed out")
+        session.request.side_effect = httpx.TimeoutException("read timed out")
 
         requester = self._make_requester(session=session)
 

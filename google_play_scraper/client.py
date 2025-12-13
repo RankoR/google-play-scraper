@@ -4,16 +4,44 @@ from datetime import datetime
 from typing import Optional, List, Union, Dict, Any
 
 import httpx
-import requests
 
 from .constants import Category, Collection, Sort, Age
 from .exceptions import AppNotFound
-from .internal.async_request import AsyncRequester
 from .internal.extractor import ElementSpec, extract_from_spec
 from .internal.parser import ScriptDataParser
 from .internal.request import Requester
 from .internal.request_constants import LIST_PAYLOAD_TEMPLATE
 from .models import AppDetails, AppOverview, Review
+
+
+def _build_proxy_mounts(proxies: Optional[dict]) -> Optional[dict]:
+    """Build `httpx` `mounts` from a requests-style proxies dict.
+
+    `httpx>=0.28` removed the `proxies=` kwarg for `Client`/`AsyncClient`.
+    Instead, proxies are configured via transports mounted per scheme.
+
+    Expected input examples:
+      - {"http": "http://localhost:8030", "https": "http://localhost:8031"}
+      - {"http://": "http://localhost:8030", "https://": "http://localhost:8031"}
+    """
+
+    if not proxies:
+        return None
+
+    def _get_proxy_url(key: str) -> Optional[str]:
+        return proxies.get(key) or proxies.get(key.rstrip(":"))
+
+    http_proxy = _get_proxy_url("http://")
+    https_proxy = _get_proxy_url("https://")
+
+    mounts: dict[str, httpx.BaseTransport] = {}
+    if http_proxy:
+        mounts["http://"] = httpx.HTTPTransport(proxy=http_proxy)
+    if https_proxy:
+        mounts["https://"] = httpx.HTTPTransport(proxy=https_proxy)
+
+    # If user passed only one of them, still return what we have.
+    return mounts or None
 
 
 def _clean_desc(html: Optional[str]) -> str:
@@ -46,24 +74,17 @@ class GooglePlayClient:
         throttle_requests_per_second: Optional[int] = None,
         verify_ssl: bool = True,
     ):
-        self._session = requests.Session()
-        if proxies:
-            self._session.proxies.update(proxies)
-        self._session.verify = verify_ssl
+        mounts = _build_proxy_mounts(proxies)
+
+        self._session = httpx.Client(mounts=mounts, verify=verify_ssl)
+        self._async_session = httpx.AsyncClient(mounts=mounts, verify=verify_ssl)
 
         self._requester = Requester(
             self._session,
             throttle_requests_per_second,
             default_lang=lang,
             default_country=country,
-        )
-
-        self._async_session = httpx.AsyncClient(proxies=proxies, verify=verify_ssl)
-        self._async_requester = AsyncRequester(
-            self._async_session,
-            throttle_requests_per_second,
-            default_lang=lang,
-            default_country=country,
+            async_session=self._async_session,
         )
 
     def _parse_app_details(self, html: str, app_id: str) -> AppDetails:
@@ -283,7 +304,7 @@ class GooglePlayClient:
     ) -> AppDetails:
         if not app_id:
             raise ValueError("app_id cannot be empty")
-        html = await self._async_requester.get(
+        html = await self._requester.aget(
             "/store/apps/details", params={"id": app_id, "hl": lang, "gl": country}
         )
         return self._parse_app_details(html, app_id)
@@ -313,7 +334,7 @@ class GooglePlayClient:
         price_map = {"free": 1, "paid": 2, "all": 0}
         p_val = price_map.get(price, 0)
         params = {"q": term, "price": p_val, "hl": lang, "gl": country}
-        html = await self._async_requester.get("/work/search", params=params)
+        html = await self._requester.aget("/work/search", params=params)
         return self._parse_search_results(html, num)
 
     def list(
@@ -350,7 +371,7 @@ class GooglePlayClient:
             num=num, collection=collection, category=category
         )
         params = self._build_list_params(age, lang, country)
-        response_text = await self._async_requester.post(
+        response_text = await self._requester.apost(
             "/_/PlayStoreUi/data/batchexecute",
             params=params,
             data=payload,
@@ -408,7 +429,7 @@ class GooglePlayClient:
         form_data, params = self._build_reviews_request(
             app_id, lang, country, sort, num, pagination_token
         )
-        resp_text = await self._async_requester.post(
+        resp_text = await self._requester.apost(
             "/_/PlayStoreUi/data/batchexecute", params=params, data=form_data
         )
         return self._parse_reviews(resp_text)
@@ -445,7 +466,7 @@ class GooglePlayClient:
         if not term:
             raise ValueError("Term cannot be empty")
         form_data, params = self._build_suggest_request(term, lang, country)
-        response_text = await self._async_requester.post(
+        response_text = await self._requester.apost(
             "/_/PlayStoreUi/data/batchexecute", params=params, data=form_data
         )
         return self._parse_suggestions(response_text)

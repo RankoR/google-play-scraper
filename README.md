@@ -268,18 +268,29 @@ except GooglePlayError as e:
 
 ## Examples and demos
 
-See the `demo/` directory for runnable examples:
+See the `demo/` directory for runnable examples.
 
-- `demo_app.py` — fetch app details
-- `demo_search.py` — search apps
-- `demo_list.py` — list collections and categories
-- `demo_reviews.py` — fetch reviews with pagination
-- `demo_suggest.py` — query suggestions
+Sync demos:
+
+- `demo/sync/demo_app.py` — fetch app details
+- `demo/sync/demo_search.py` — search apps
+- `demo/sync/demo_list.py` — list collections and categories
+- `demo/sync/demo_reviews.py` — fetch reviews with pagination
+- `demo/sync/demo_suggest.py` — query suggestions
+
+Async demos:
+
+- `demo/async/demo_app.py` — fetch app details
+- `demo/async/demo_search.py` — search apps
+- `demo/async/demo_list.py` — list collections and categories
+- `demo/async/demo_reviews.py` — fetch reviews with pagination
+- `demo/async/demo_suggest.py` — query suggestions
 
 Run with:
 
 ```
-python -m demo.demo_app
+python -m demo.sync.demo_app
+python -m demo.async.demo_app
 ```
 
 

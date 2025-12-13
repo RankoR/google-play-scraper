@@ -30,8 +30,8 @@ class TestAsyncClientReviews(unittest.IsolatedAsyncioTestCase):
         "google_play_scraper.client.ScriptDataParser.parse_batchexecute_response",
         return_value=[[], None],
     )
-    @patch("google_play_scraper.client.AsyncRequester.post", new_callable=AsyncMock)
-    async def test_request_formation(self, mock_post, mock_parse):
+    @patch("google_play_scraper.client.Requester.apost", new_callable=AsyncMock)
+    async def test_request_formation(self, mock_apost, mock_parse):
         app_id = "com.example.app"
         lang = "en"
         country = "us"
@@ -48,8 +48,8 @@ class TestAsyncClientReviews(unittest.IsolatedAsyncioTestCase):
             pagination_token=token,
         )
 
-        mock_post.assert_called_once()
-        _, kwargs = mock_post.call_args
+        mock_apost.assert_called_once()
+        _, kwargs = mock_apost.call_args
         self.assertEqual(kwargs["params"]["rpcids"], "UsvDTd")
         self.assertEqual(kwargs["params"]["hl"], lang)
         self.assertEqual(kwargs["params"]["gl"], country)
@@ -72,12 +72,12 @@ class TestAsyncClientReviews(unittest.IsolatedAsyncioTestCase):
 
     @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
     @patch(
-        "google_play_scraper.client.AsyncRequester.post",
+        "google_play_scraper.client.Requester.apost",
         new_callable=AsyncMock,
         return_value="OK",
     )
     async def test_happy_path_mapping_and_token_and_skip_missing_id(
-        self, mock_post, mock_parse
+        self, mock_apost, mock_parse
     ):
         reviews_root = [make_review("RID_1"), make_review(None)]
         token_info = [None, "NEXT_TOKEN"]

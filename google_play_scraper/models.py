@@ -29,8 +29,17 @@ def _coerce_float(v: Any) -> float:
     return 0.0
 
 
+def _coerce_bool(v: Any) -> bool:
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return False
+    return bool(v)
+
+
 CoercedInt = Annotated[int, BeforeValidator(_coerce_int)]
 CoercedFloat = Annotated[float, BeforeValidator(_coerce_float)]
+CoercedBool = Annotated[bool, BeforeValidator(_coerce_bool)]
 
 
 class AppOverview(BaseModel):
@@ -59,9 +68,9 @@ class AppDetails(AppOverview):
     histogram: Dict[str, int] = Field(default_factory=dict)
     currency: Optional[str] = None
     price: CoercedFloat = 0.0
-    available: bool = True
-    offers_iap: bool = False
-    android_version: str = "VARY"
+    available: CoercedBool = True
+    offers_iap: CoercedBool = False
+    android_version: Optional[str] = "VARY"
     developer_email: Optional[str] = None
     developer_website: Optional[HttpUrl] = None
     developer_address: Optional[str] = None

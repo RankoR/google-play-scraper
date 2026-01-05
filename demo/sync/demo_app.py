@@ -24,8 +24,6 @@ def main():
 
     except AppNotFound:
         print(f"Error: App {app_id} not found.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
 
 
 if __name__ == "__main__":

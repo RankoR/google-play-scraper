@@ -37,9 +37,16 @@ def _coerce_bool(v: Any) -> bool:
     return bool(v)
 
 
+def _coerce_histogram(v: Any) -> Dict[str, int]:
+    if isinstance(v, dict):
+        return v
+    return {str(i): 0 for i in range(1, 6)}
+
+
 CoercedInt = Annotated[int, BeforeValidator(_coerce_int)]
 CoercedFloat = Annotated[float, BeforeValidator(_coerce_float)]
 CoercedBool = Annotated[bool, BeforeValidator(_coerce_bool)]
+CoercedHistogram = Annotated[Dict[str, int], BeforeValidator(_coerce_histogram)]
 
 
 class AppOverview(BaseModel):
@@ -65,7 +72,7 @@ class AppDetails(AppOverview):
     max_installs: CoercedInt = 0
     ratings: CoercedInt = 0
     reviews: CoercedInt = 0
-    histogram: Dict[str, int] = Field(default_factory=dict)
+    histogram: CoercedHistogram = Field(default_factory=dict)
     currency: Optional[str] = None
     price: CoercedFloat = 0.0
     available: CoercedBool = True

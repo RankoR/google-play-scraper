@@ -4,6 +4,37 @@ from unittest.mock import patch
 from google_play_scraper.client import GooglePlayClient
 
 
+def make_item(app_id: str | None, title: str):
+    item = [None] * 13
+    icon_path = [None, [[None, [None, None, "https://img.test/icon.png"]]]]
+    dev_block = [[
+        title + " Dev",
+        [None, None, None, None, [None, None, "https://play.google.com/store/apps/dev?id=DEV_ID"]],
+    ]]
+    price_block = [[None, None, None, [None, None, [None, [[0, None, "$0.00"]]]]]]
+    score_block = [[None, None, [None, ["4.5", 4.5]]]]
+    item[1] = icon_path
+    item[2] = title
+    item[4] = [dev_block, [None, [None, [None, title + " summary"]]]]
+    item[6] = score_block
+    item[7] = price_block
+    if app_id is not None:
+        item[12] = [app_id]
+    return item
+
+
+def make_initial_search_page(items, token: str | None = None):
+    sections = [items]
+    if token:
+        sections.append([None, token])
+    return {"ds:1": [["x", [[sections]]]]}
+
+
+def make_paginated_search_page(items, token: str | None = None):
+    token_section = [None, token] if token else None
+    return [[[items, None, None, None, None, None, None, token_section]]]
+
+
 class ClientSearchTest(unittest.TestCase):
     def setUp(self):
         self.client = GooglePlayClient()
@@ -39,52 +70,12 @@ class ClientSearchTest(unittest.TestCase):
     def test_happy_path_limits_num_and_skips_missing_app_id(self, mock_get, mock_parse):
         mock_get.return_value = "<html>dummy</html>"
 
-        # Build three items; one without app_id should be skipped; only first 2 returned
-        def make_item(app_id: str | None, title: str):
-            item = [None] * 13
-            # icon path [1,1,0,3,2]
-            icon_path = [None, [[None, [None, None, "https://img.test/icon.png"]]]]
-            # developer paths
-            dev_block = [[title + " Dev",
-                          [None, None, None, None, [None, None, "https://play.google.com/store/apps/dev?id=DEV_ID"]]]]
-            # price block -> paths:
-            #   free flag at [7,0,3,2,1,0,0] (expects 0 for free)
-            #   price_text at [7,0,3,2,1,0,2] (expects "$0.00")
-            price_block = [
-                [
-                    None, None, None,
-                    [
-                        None, None,
-                        [
-                            None,
-                            [
-                                [0, None, "$0.00"]
-                            ]
-                        ]
-                    ]
-                ]
-            ]
-            # score block -> paths:
-            #   score at [6,0,2,1,1] (expects 4.5)
-            #   score_text at [6,0,2,1,0] (expects "4.5")
-            score_block = [[None, None, [None, ["4.5", 4.5]]]]
-            # summary at [4,1,1,1,1]
-            item[1] = icon_path
-            item[2] = title
-            item[4] = [dev_block, [None, [None, [None, title + " summary"]]]]
-            item[6] = score_block
-            item[7] = price_block
-            if app_id is not None:
-                item[12] = [app_id]
-            return item
-
         item1 = make_item("com.example.one", "One")
         item2 = make_item("com.example.two", "Two")
         item3 = make_item(None, "NoID")  # should be skipped
         items = [item1, item2, item3]
 
-        ds1 = [["x", [[[items]]]]]
-        mock_parse.return_value = {"ds:1": ds1}
+        mock_parse.return_value = make_initial_search_page(items)
 
         results = self.client.search("query", num=2)
 
@@ -127,6 +118,49 @@ class ClientSearchTest(unittest.TestCase):
         # items is []
         mock_parse.return_value = {"ds:1": [["x", [[[[]]]]]]}
         self.assertEqual(self.client.search("q"), [])
+
+    @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
+    @patch("google_play_scraper.client.ScriptDataParser.parse")
+    @patch("google_play_scraper.client.Requester.post")
+    @patch("google_play_scraper.client.Requester.get")
+    def test_paginates_until_num_is_satisfied(
+        self, mock_get, mock_post, mock_parse, mock_parse_batchexecute
+    ):
+        first_page_items = [make_item(f"com.example.{i}", f"App {i}") for i in range(50)]
+        second_page_items = [make_item(f"com.example.{i}", f"App {i}") for i in range(50, 70)]
+
+        mock_get.return_value = "<html>dummy</html>"
+        mock_post.return_value = "batchexecute"
+        mock_parse.return_value = make_initial_search_page(first_page_items, token="TOKEN_1")
+        mock_parse_batchexecute.return_value = make_paginated_search_page(second_page_items)
+
+        results = self.client.search("query", num=60)
+
+        self.assertEqual(len(results), 60)
+        self.assertEqual(results[0].app_id, "com.example.0")
+        self.assertEqual(results[-1].app_id, "com.example.59")
+        mock_post.assert_called_once()
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["params"]["rpcids"], "qnKhOb")
+        self.assertIn("TOKEN_1", kwargs["data"]["f.req"])
+
+    @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
+    @patch("google_play_scraper.client.ScriptDataParser.parse")
+    @patch("google_play_scraper.client.Requester.post")
+    @patch("google_play_scraper.client.Requester.get")
+    def test_does_not_paginate_when_first_page_already_satisfies_num(
+        self, mock_get, mock_post, mock_parse, mock_parse_batchexecute
+    ):
+        items = [make_item(f"com.example.{i}", f"App {i}") for i in range(50)]
+
+        mock_get.return_value = "<html>dummy</html>"
+        mock_parse.return_value = make_initial_search_page(items, token="TOKEN_1")
+
+        results = self.client.search("query", num=20)
+
+        self.assertEqual(len(results), 20)
+        mock_post.assert_not_called()
+        mock_parse_batchexecute.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -38,6 +38,18 @@ def make_item(app_id: str | None, title: str):
     return item
 
 
+def make_initial_search_page(items, token: str | None = None):
+    sections = [items]
+    if token:
+        sections.append([None, token])
+    return {"ds:1": [["x", [[sections]]]]}
+
+
+def make_paginated_search_page(items, token: str | None = None):
+    token_section = [None, token] if token else None
+    return [[[items, None, None, None, None, None, None, token_section]]]
+
+
 class TestAsyncClientSearch(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.client = GooglePlayClient()
@@ -74,8 +86,7 @@ class TestAsyncClientSearch(unittest.IsolatedAsyncioTestCase):
         item2 = make_item("com.example.two", "Two")
         item3 = make_item(None, "NoID")
         items = [item1, item2, item3]
-        ds1 = [["x", [[[items]]]]]
-        mock_parse.return_value = {"ds:1": ds1}
+        mock_parse.return_value = make_initial_search_page(items)
 
         results = await self.client.asearch("query", num=2)
 
@@ -124,3 +135,51 @@ class TestAsyncClientSearch(unittest.IsolatedAsyncioTestCase):
             with self.subTest(items_val=items_val):
                 mock_parse.return_value = {"ds:1": [["x", [[[items_val]]]]]}
                 self.assertEqual(await self.client.asearch("q"), [])
+
+    @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
+    @patch("google_play_scraper.client.ScriptDataParser.parse")
+    @patch("google_play_scraper.client.Requester.apost", new_callable=AsyncMock)
+    @patch(
+        "google_play_scraper.client.Requester.aget",
+        new_callable=AsyncMock,
+        return_value="<html>dummy</html>",
+    )
+    async def test_paginates_until_num_is_satisfied(
+        self, mock_aget, mock_apost, mock_parse, mock_parse_batchexecute
+    ):
+        first_page_items = [make_item(f"com.example.{i}", f"App {i}") for i in range(50)]
+        second_page_items = [make_item(f"com.example.{i}", f"App {i}") for i in range(50, 70)]
+
+        mock_apost.return_value = "batchexecute"
+        mock_parse.return_value = make_initial_search_page(first_page_items, token="TOKEN_1")
+        mock_parse_batchexecute.return_value = make_paginated_search_page(second_page_items)
+
+        results = await self.client.asearch("query", num=60)
+
+        self.assertEqual(len(results), 60)
+        self.assertEqual(results[0].app_id, "com.example.0")
+        self.assertEqual(results[-1].app_id, "com.example.59")
+        mock_apost.assert_awaited_once()
+        _, kwargs = mock_apost.call_args
+        self.assertEqual(kwargs["params"]["rpcids"], "qnKhOb")
+        self.assertIn("TOKEN_1", kwargs["data"]["f.req"])
+
+    @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
+    @patch("google_play_scraper.client.ScriptDataParser.parse")
+    @patch("google_play_scraper.client.Requester.apost", new_callable=AsyncMock)
+    @patch(
+        "google_play_scraper.client.Requester.aget",
+        new_callable=AsyncMock,
+        return_value="<html>dummy</html>",
+    )
+    async def test_does_not_paginate_when_first_page_already_satisfies_num(
+        self, mock_aget, mock_apost, mock_parse, mock_parse_batchexecute
+    ):
+        items = [make_item(f"com.example.{i}", f"App {i}") for i in range(50)]
+        mock_parse.return_value = make_initial_search_page(items, token="TOKEN_1")
+
+        results = await self.client.asearch("query", num=20)
+
+        self.assertEqual(len(results), 20)
+        mock_apost.assert_not_awaited()
+        mock_parse_batchexecute.assert_not_called()

@@ -14,7 +14,9 @@ from .internal.request_constants import LIST_PAYLOAD_TEMPLATE
 from .models import AppDetails, AppOverview, Review
 
 
-def _build_proxy_mounts(proxies: Optional[dict]) -> Optional[dict]:
+def _build_proxy_mounts(
+    proxies: Optional[dict], *, async_client: bool = False
+) -> Optional[dict]:
     """Build `httpx` `mounts` from a requests-style proxies dict.
 
     `httpx>=0.28` removed the `proxies=` kwarg for `Client`/`AsyncClient`.
@@ -28,17 +30,21 @@ def _build_proxy_mounts(proxies: Optional[dict]) -> Optional[dict]:
     if not proxies:
         return None
 
-    def _get_proxy_url(key: str) -> Optional[str]:
-        return proxies.get(key) or proxies.get(key.rstrip(":"))
+    def _get_proxy_url(*keys: str) -> Optional[str]:
+        for key in keys:
+            if key in proxies:
+                return proxies[key]
+        return None
 
-    http_proxy = _get_proxy_url("http://")
-    https_proxy = _get_proxy_url("https://")
+    http_proxy = _get_proxy_url("http://", "http")
+    https_proxy = _get_proxy_url("https://", "https")
 
-    mounts: dict[str, httpx.BaseTransport] = {}
+    transport_cls = httpx.AsyncHTTPTransport if async_client else httpx.HTTPTransport
+    mounts: dict[str, httpx.BaseTransport | httpx.AsyncBaseTransport] = {}
     if http_proxy:
-        mounts["http://"] = httpx.HTTPTransport(proxy=http_proxy)
+        mounts["http://"] = transport_cls(proxy=http_proxy)
     if https_proxy:
-        mounts["https://"] = httpx.HTTPTransport(proxy=https_proxy)
+        mounts["https://"] = transport_cls(proxy=https_proxy)
 
     # If user passed only one of them, still return what we have.
     return mounts or None
@@ -74,10 +80,11 @@ class GooglePlayClient:
         throttle_requests_per_second: Optional[int] = None,
         verify_ssl: bool = True,
     ):
-        mounts = _build_proxy_mounts(proxies)
+        sync_mounts = _build_proxy_mounts(proxies)
+        async_mounts = _build_proxy_mounts(proxies, async_client=True)
 
-        self._session = httpx.Client(mounts=mounts, verify=verify_ssl)
-        self._async_session = httpx.AsyncClient(mounts=mounts, verify=verify_ssl)
+        self._session = httpx.Client(mounts=sync_mounts, verify=verify_ssl)
+        self._async_session = httpx.AsyncClient(mounts=async_mounts, verify=verify_ssl)
 
         self._requester = Requester(
             self._session,

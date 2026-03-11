@@ -103,13 +103,23 @@ class TestAsyncClientReviews(unittest.IsolatedAsyncioTestCase):
         "google_play_scraper.client.ScriptDataParser.parse_batchexecute_response",
         return_value=[],
     )
-    async def test_edge_empty_parsed_data(self, mock_parse):
+    @patch(
+        "google_play_scraper.client.Requester.apost",
+        new_callable=AsyncMock,
+        return_value="OK",
+    )
+    async def test_edge_empty_parsed_data(self, mock_apost, mock_parse):
         reviews, token = await self.client.areviews(app_id="com.example")
         self.assertEqual(reviews, [])
         self.assertIsNone(token)
 
     @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
-    async def test_edge_indexing_or_type_errors(self, mock_parse):
+    @patch(
+        "google_play_scraper.client.Requester.apost",
+        new_callable=AsyncMock,
+        return_value="OK",
+    )
+    async def test_edge_indexing_or_type_errors(self, mock_apost, mock_parse):
         for bad_data in [[None], [{}], ["x"], [1]]:
             with self.subTest(bad_data=bad_data):
                 mock_parse.return_value = bad_data
@@ -118,7 +128,12 @@ class TestAsyncClientReviews(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNone(token)
 
     @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
-    async def test_edge_falsy_reviews_root(self, mock_parse):
+    @patch(
+        "google_play_scraper.client.Requester.apost",
+        new_callable=AsyncMock,
+        return_value="OK",
+    )
+    async def test_edge_falsy_reviews_root(self, mock_apost, mock_parse):
         for reviews_root in [None, []]:
             with self.subTest(reviews_root=reviews_root):
                 mock_parse.return_value = [reviews_root, [None, "T"]]

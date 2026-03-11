@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from datetime import datetime
 
 from google_play_scraper.client import GooglePlayClient
@@ -197,6 +197,29 @@ class ClientAppTest(unittest.TestCase):
     def test_empty_app_id_raises_value_error(self):
         with self.assertRaises(ValueError):
             self.client.app("")
+
+    @patch("google_play_scraper.client.ScriptDataParser.parse")
+    def test_app_uses_client_default_locale_when_call_does_not_override(self, mock_parse):
+        app_id = "com.example.app"
+        root = make_root_for_happy_path()
+        mock_parse.return_value = {"ds:5": self._ds5_with_root(root)}
+
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.text = "<html>dummy</html>"
+
+        client = GooglePlayClient(country="br", lang="pt")
+        client._requester._session = Mock()
+        client._requester._session.request.return_value = response
+
+        details = client.app(app_id)
+
+        self.assertEqual(details.title, "My App")
+
+        call_kwargs = client._requester._session.request.call_args.kwargs
+        self.assertEqual(call_kwargs["params"]["hl"], "pt")
+        self.assertEqual(call_kwargs["params"]["gl"], "br")
+        self.assertEqual(call_kwargs["params"]["id"], app_id)
 
 
 if __name__ == "__main__":

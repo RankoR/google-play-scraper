@@ -1,6 +1,6 @@
 import json
 import unittest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, Mock
 
 from google_play_scraper.client import GooglePlayClient
 
@@ -101,3 +101,26 @@ class TestAsyncClientSuggest(unittest.IsolatedAsyncioTestCase):
             with self.subTest(bad_data=bad_data):
                 mock_parse.return_value = bad_data
                 self.assertEqual(await self.client.asuggest("q"), [])
+
+    @patch(
+        "google_play_scraper.client.ScriptDataParser.parse_batchexecute_response",
+        return_value=[[], None],
+    )
+    async def test_asuggest_uses_client_default_locale_when_call_does_not_override(
+        self, mock_parse
+    ):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.text = "OK"
+
+        client = GooglePlayClient(country="br", lang="pt")
+        client._requester._async_session = AsyncMock()
+        client._requester._async_session.request.return_value = response
+
+        suggestions = await client.asuggest("maps")
+
+        self.assertEqual(suggestions, [])
+
+        call_kwargs = client._requester._async_session.request.call_args.kwargs
+        self.assertEqual(call_kwargs["params"]["hl"], "pt")
+        self.assertEqual(call_kwargs["params"]["gl"], "br")

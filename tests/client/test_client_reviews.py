@@ -1,7 +1,7 @@
 import json
 import unittest
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from google_play_scraper.client import GooglePlayClient
 from google_play_scraper.constants import Sort
@@ -128,6 +128,27 @@ class ClientReviewsTest(unittest.TestCase):
         reviews, token = self.client.reviews(app_id="com.example")
         self.assertEqual(reviews, [])
         self.assertIsNone(token)
+
+    @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
+    def test_reviews_uses_client_default_locale_when_call_does_not_override(self, mock_parse):
+        mock_parse.return_value = [[], None]
+
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.text = "OK"
+
+        client = GooglePlayClient(country="br", lang="pt")
+        client._requester._session = Mock()
+        client._requester._session.request.return_value = response
+
+        reviews, token = client.reviews(app_id="com.example")
+
+        self.assertEqual(reviews, [])
+        self.assertIsNone(token)
+
+        call_kwargs = client._requester._session.request.call_args.kwargs
+        self.assertEqual(call_kwargs["params"]["hl"], "pt")
+        self.assertEqual(call_kwargs["params"]["gl"], "br")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from google_play_scraper.client import GooglePlayClient
 
@@ -161,6 +161,38 @@ class ClientSearchTest(unittest.TestCase):
         self.assertEqual(len(results), 20)
         mock_post.assert_not_called()
         mock_parse_batchexecute.assert_not_called()
+
+    @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
+    @patch("google_play_scraper.client.ScriptDataParser.parse")
+    def test_search_uses_client_default_locale_for_initial_and_paginated_requests(
+        self, mock_parse, mock_parse_batchexecute
+    ):
+        first_page_items = [make_item(f"com.example.{i}", f"App {i}") for i in range(50)]
+        second_page_items = [make_item(f"com.example.{i}", f"App {i}") for i in range(50, 70)]
+        mock_parse.return_value = make_initial_search_page(first_page_items, token="TOKEN_1")
+        mock_parse_batchexecute.return_value = make_paginated_search_page(second_page_items)
+
+        response_get = Mock()
+        response_get.raise_for_status.return_value = None
+        response_get.text = "<html>dummy</html>"
+
+        response_post = Mock()
+        response_post.raise_for_status.return_value = None
+        response_post.text = "batchexecute"
+
+        client = GooglePlayClient(country="br", lang="pt")
+        client._requester._session = Mock()
+        client._requester._session.request.side_effect = [response_get, response_post]
+
+        results = client.search("query", num=60)
+
+        self.assertEqual(len(results), 60)
+
+        request_calls = client._requester._session.request.call_args_list
+        self.assertEqual(request_calls[0].kwargs["params"]["hl"], "pt")
+        self.assertEqual(request_calls[0].kwargs["params"]["gl"], "br")
+        self.assertEqual(request_calls[1].kwargs["params"]["hl"], "pt")
+        self.assertEqual(request_calls[1].kwargs["params"]["gl"], "br")
 
 
 if __name__ == "__main__":

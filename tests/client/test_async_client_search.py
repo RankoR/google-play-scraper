@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, Mock
 
 from google_play_scraper.client import GooglePlayClient
 
@@ -183,3 +183,35 @@ class TestAsyncClientSearch(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(results), 20)
         mock_apost.assert_not_awaited()
         mock_parse_batchexecute.assert_not_called()
+
+    @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
+    @patch("google_play_scraper.client.ScriptDataParser.parse")
+    async def test_asearch_uses_client_default_locale_for_initial_and_paginated_requests(
+        self, mock_parse, mock_parse_batchexecute
+    ):
+        first_page_items = [make_item(f"com.example.{i}", f"App {i}") for i in range(50)]
+        second_page_items = [make_item(f"com.example.{i}", f"App {i}") for i in range(50, 70)]
+        mock_parse.return_value = make_initial_search_page(first_page_items, token="TOKEN_1")
+        mock_parse_batchexecute.return_value = make_paginated_search_page(second_page_items)
+
+        response_get = Mock()
+        response_get.raise_for_status.return_value = None
+        response_get.text = "<html>dummy</html>"
+
+        response_post = Mock()
+        response_post.raise_for_status.return_value = None
+        response_post.text = "batchexecute"
+
+        client = GooglePlayClient(country="br", lang="pt")
+        client._requester._async_session = AsyncMock()
+        client._requester._async_session.request.side_effect = [response_get, response_post]
+
+        results = await client.asearch("query", num=60)
+
+        self.assertEqual(len(results), 60)
+
+        request_calls = client._requester._async_session.request.call_args_list
+        self.assertEqual(request_calls[0].kwargs["params"]["hl"], "pt")
+        self.assertEqual(request_calls[0].kwargs["params"]["gl"], "br")
+        self.assertEqual(request_calls[1].kwargs["params"]["hl"], "pt")
+        self.assertEqual(request_calls[1].kwargs["params"]["gl"], "br")

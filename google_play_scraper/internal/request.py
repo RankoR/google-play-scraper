@@ -35,6 +35,18 @@ class Requester:
             "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
         }
 
+    def _merge_locale_params(self, params: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        merged = {} if params is None else params.copy()
+
+        # Client methods pass `hl`/`gl` through even when the caller does not override
+        # them, so treat explicit None the same as an omitted value.
+        if merged.get("hl") is None:
+            merged["hl"] = self._lang
+        if merged.get("gl") is None:
+            merged["gl"] = self._country
+
+        return merged
+
     def _wait_for_throttle(self):
         if self._throttle_delay > 0:
             elapsed = time.time() - self._last_request_time
@@ -65,11 +77,7 @@ class Requester:
         if headers:
             final_headers.update(headers)
 
-        # Merge defaults if not present
-        if params is None:
-            params = {}
-        params.setdefault("hl", self._lang)
-        params.setdefault("gl", self._country)
+        params = self._merge_locale_params(params)
 
         try:
             response = self._session.request(
@@ -110,10 +118,7 @@ class Requester:
         if headers:
             final_headers.update(headers)
 
-        if params is None:
-            params = {}
-        params.setdefault("hl", self._lang)
-        params.setdefault("gl", self._country)
+        params = self._merge_locale_params(params)
 
         try:
             response = await self._async_session.request(

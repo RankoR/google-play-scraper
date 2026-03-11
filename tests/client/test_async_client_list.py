@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, Mock
 
 from google_play_scraper.client import GooglePlayClient
 
@@ -136,3 +136,26 @@ class TestAsyncClientList(unittest.IsolatedAsyncioTestCase):
         mock_parse.return_value = data
 
         self.assertEqual(await self.client.alist(), [])
+
+    @patch(
+        "google_play_scraper.client.ScriptDataParser.parse_batchexecute_response",
+        return_value=[],
+    )
+    async def test_alist_uses_client_default_locale_when_call_does_not_override(
+        self, mock_parse
+    ):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.text = "OK"
+
+        client = GooglePlayClient(country="br", lang="pt")
+        client._requester._async_session = AsyncMock()
+        client._requester._async_session.request.return_value = response
+
+        results = await client.alist()
+
+        self.assertEqual(results, [])
+
+        call_kwargs = client._requester._async_session.request.call_args.kwargs
+        self.assertEqual(call_kwargs["params"]["hl"], "pt")
+        self.assertEqual(call_kwargs["params"]["gl"], "br")

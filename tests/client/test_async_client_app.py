@@ -1,6 +1,6 @@
 import unittest
 from datetime import datetime
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, Mock
 
 from google_play_scraper.client import GooglePlayClient
 from google_play_scraper.exceptions import AppNotFound
@@ -176,3 +176,27 @@ class TestAsyncClientApp(unittest.IsolatedAsyncioTestCase):
     async def test_empty_app_id_raises_value_error(self):
         with self.assertRaises(ValueError):
             await self.client.aapp("")
+
+    @patch("google_play_scraper.client.ScriptDataParser.parse")
+    async def test_aapp_uses_client_default_locale_when_call_does_not_override(
+        self, mock_parse
+    ):
+        app_id = "com.example.app"
+        mock_parse.return_value = {"ds:5": ds5_with_root(make_root_for_happy_path())}
+
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.text = "<html>dummy</html>"
+
+        client = GooglePlayClient(country="br", lang="pt")
+        client._requester._async_session = AsyncMock()
+        client._requester._async_session.request.return_value = response
+
+        details = await client.aapp(app_id)
+
+        self.assertEqual(details.title, "My App")
+
+        call_kwargs = client._requester._async_session.request.call_args.kwargs
+        self.assertEqual(call_kwargs["params"]["hl"], "pt")
+        self.assertEqual(call_kwargs["params"]["gl"], "br")
+        self.assertEqual(call_kwargs["params"]["id"], app_id)

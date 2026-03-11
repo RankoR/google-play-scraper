@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 
@@ -87,6 +87,24 @@ class RequesterRequestTest(unittest.TestCase):
         # Provided hl and gl must be preserved
         self.assertEqual(sent_params["hl"], "fr")
         self.assertEqual(sent_params["gl"], "ca")
+        self.assertEqual(sent_params["x"], 1)
+
+    @patch.object(Requester, "_wait_for_throttle", autospec=True)
+    def test_params_fill_default_hl_gl_when_keys_are_present_but_none(self, _wait_mock):
+        session = Mock(spec=httpx.Client)
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.text = "OK"
+        session.request.return_value = response
+
+        requester = self._make_requester(session=session, lang="pt", country="br")
+
+        requester.request("GET", "/p", params={"hl": None, "gl": None, "x": 1})
+
+        call_kwargs = session.request.call_args.kwargs
+        sent_params = call_kwargs["params"]
+        self.assertEqual(sent_params["hl"], "pt")
+        self.assertEqual(sent_params["gl"], "br")
         self.assertEqual(sent_params["x"], 1)
 
     @patch.object(Requester, "_wait_for_throttle", autospec=True)
@@ -212,6 +230,49 @@ class RequesterRequestTest(unittest.TestCase):
 
         mock_sleep.assert_not_called()
         self.assertEqual(requester._last_request_time, 11.0)
+
+class RequesterAsyncRequestTest(unittest.IsolatedAsyncioTestCase):
+
+    def _make_requester(
+        self, *, async_session=None, throttle=None, lang="en", country="us"
+    ):
+        session = Mock(spec=httpx.Client)
+        if async_session is None:
+            async_session = AsyncMock(spec=httpx.AsyncClient)
+        return Requester(
+            session=session,
+            throttle=throttle,
+            default_lang=lang,
+            default_country=country,
+            async_session=async_session,
+        )
+
+    @patch.object(Requester, "_await_for_throttle", new_callable=AsyncMock)
+    async def test_arequest_fills_default_hl_gl_when_keys_are_present_but_none(
+        self, _await_mock
+    ):
+        async_session = AsyncMock(spec=httpx.AsyncClient)
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.text = "OK"
+        async_session.request.return_value = response
+
+        requester = self._make_requester(
+            async_session=async_session, lang="pt", country="br"
+        )
+
+        result = await requester.arequest(
+            "GET", "/p", params={"hl": None, "gl": None, "x": 1}
+        )
+
+        self.assertEqual(result, "OK")
+        _await_mock.assert_awaited_once()
+
+        call_kwargs = async_session.request.call_args.kwargs
+        sent_params = call_kwargs["params"]
+        self.assertEqual(sent_params["hl"], "pt")
+        self.assertEqual(sent_params["gl"], "br")
+        self.assertEqual(sent_params["x"], 1)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import json
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from google_play_scraper.client import GooglePlayClient
 
@@ -112,6 +112,26 @@ class ClientSuggestTest(unittest.TestCase):
         ):
             mock_parse.return_value = bad
             self.assertEqual(self.client.suggest("q"), [])
+
+    @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")
+    def test_suggest_uses_client_default_locale_when_call_does_not_override(self, mock_parse):
+        mock_parse.return_value = [[], None]
+
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.text = "OK"
+
+        client = GooglePlayClient(country="br", lang="pt")
+        client._requester._session = Mock()
+        client._requester._session.request.return_value = response
+
+        suggestions = client.suggest("maps")
+
+        self.assertEqual(suggestions, [])
+
+        call_kwargs = client._requester._session.request.call_args.kwargs
+        self.assertEqual(call_kwargs["params"]["hl"], "pt")
+        self.assertEqual(call_kwargs["params"]["gl"], "br")
 
 
 if __name__ == "__main__":

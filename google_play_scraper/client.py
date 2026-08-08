@@ -13,8 +13,51 @@ from .internal.request import Requester
 from .internal.request_constants import LIST_PAYLOAD_TEMPLATE
 from .models import AppDetails, AppOverview, Review
 
-SEARCH_PAGINATION_RPC_ID = "qnKhOb"
-SEARCH_PAGINATION_PAGE_SIZE = 100
+# Layout of a single app entry, shared by search results and list clusters.
+OVERVIEW_SPECS = {
+    "app_id": ElementSpec([0, 0, 0]),
+    "title": ElementSpec([0, 3]),
+    "icon": ElementSpec([0, 1, 3, 2]),
+    "developer": ElementSpec([0, 14]),
+    "score": ElementSpec([0, 4, 1]),
+    "score_text": ElementSpec([0, 4, 0]),
+    "price_text": ElementSpec([0, 8, 1, 0, 2]),
+    "free": ElementSpec([0, 8, 1, 0, 0], transformer=lambda x: x == 0),
+    "summary": ElementSpec([0, 13, 1]),
+}
+
+
+def _is_app_entry(item: Any) -> bool:
+    return isinstance(
+        OVERVIEW_SPECS["app_id"].extract(item), str
+    ) and isinstance(OVERVIEW_SPECS["title"].extract(item), str)
+
+
+def _find_app_cluster(node: Any) -> Optional[list]:
+    """Locate the list of app entries in a parsed search page.
+
+    Its position moves between queries and locales (seen at ds:4[0][1][0][22][0]
+    and ds:4[0][1][1][22][0]), so match on shape rather than a fixed path.
+    """
+    if isinstance(node, list):
+        # Tolerate filler entries (ads, separators) mixed into the cluster.
+        if (
+            node
+            and all(isinstance(item, list) for item in node)
+            and any(_is_app_entry(item) for item in node)
+        ):
+            return node
+        children = node
+    elif isinstance(node, dict):
+        children = node.values()
+    else:
+        return None
+
+    for child in children:
+        found = _find_app_cluster(child)
+        if found:
+            return found
+    return None
 
 
 def _build_proxy_mounts(
@@ -169,159 +212,16 @@ class GooglePlayClient:
         return AppDetails(**data)
 
     def _parse_search_results(self, html: str, num: int) -> List[AppOverview]:
-        data_map = ScriptDataParser.parse(html)
-        ds1 = data_map.get("ds:1")
-        if not ds1:
+        cluster = _find_app_cluster(ScriptDataParser.parse(html))
+        if not cluster:
             return []
 
-        try:
-            sections = ds1[0][1][0][0]
-        except (IndexError, TypeError):
-            return []
-
-        try:
-            items = sections[0]
-        except (IndexError, TypeError):
-            return []
-
-        return self._extract_search_results(items, num)
-
-    def _extract_search_results(self, items: Any, num: int | None = None) -> List[AppOverview]:
         results = []
-        specs = {
-            "title": ElementSpec([2]),
-            "app_id": ElementSpec([12, 0]),
-            "icon": ElementSpec([1, 1, 0, 3, 2]),
-            "developer": ElementSpec([4, 0, 0, 0]),
-            "developer_id": ElementSpec(
-                [4, 0, 0, 1, 4, 2],
-                transformer=lambda x: x.split("id=")[1] if "id=" in x else x,
-            ),
-            "score": ElementSpec([6, 0, 2, 1, 1]),
-            "score_text": ElementSpec([6, 0, 2, 1, 0]),
-            "price_text": ElementSpec([7, 0, 3, 2, 1, 0, 2]),
-            "free": ElementSpec([7, 0, 3, 2, 1, 0, 0], transformer=lambda x: x == 0),
-            "summary": ElementSpec([4, 1, 1, 1, 1]),
-        }
-
-        if not items:
-            return []
-
-        items_to_process = items if num is None else items[:num]
-        for item in items_to_process:
-            data = extract_from_spec(item, specs)
+        for item in cluster[:num]:
+            data = extract_from_spec(item, OVERVIEW_SPECS)
             if data.get("app_id"):
                 results.append(AppOverview(**data))
-
         return results
-
-    def _extract_search_token(self, html: str) -> Optional[str]:
-        data_map = ScriptDataParser.parse(html)
-        ds1 = data_map.get("ds:1")
-        if not ds1:
-            return None
-
-        try:
-            sections = ds1[0][1][0][0]
-        except (IndexError, TypeError):
-            return None
-
-        if not isinstance(sections, list):
-            return None
-
-        for section in sections:
-            token = ElementSpec([1]).extract(section)
-            if isinstance(token, str):
-                return token
-        return None
-
-    def _parse_paginated_search_results(
-        self, response_text: str
-    ) -> tuple[List[AppOverview], Optional[str]]:
-        data = ScriptDataParser.parse_batchexecute_response(response_text)
-        if not data:
-            return [], None
-
-        items = ElementSpec([0, 0, 0]).extract(data)
-        if not items:
-            return [], None
-
-        token = ElementSpec([0, 0, 7, 1]).extract(data)
-        if not isinstance(token, str):
-            token = None
-
-        return self._extract_search_results(items), token
-
-    def _build_search_pagination_request(
-        self, token: str, lang: str, country: str
-    ) -> tuple[Dict[str, str], Dict[str, str]]:
-        req_json = json.dumps(
-            [[
-                None,
-                [
-                    [10, [10, SEARCH_PAGINATION_PAGE_SIZE]],
-                    True,
-                    None,
-                    [96, 27, 4, 8, 57, 30, 110, 79, 11, 16, 49, 1, 3, 9, 12, 104, 55, 56, 51, 10, 34, 77],
-                ],
-                None,
-                token,
-            ]]
-        )
-        form_data = {"f.req": json.dumps([[[SEARCH_PAGINATION_RPC_ID, req_json, None, "generic"]]])}
-        params = {
-            "rpcids": SEARCH_PAGINATION_RPC_ID,
-            "f.sid": "-697906427155521722",
-            "bl": "boq_playuiserver_20190903.08_p0",
-            "hl": lang,
-            "gl": country,
-            "authuser": "",
-            "soc-app": "121",
-            "soc-platform": "1",
-            "soc-device": "1",
-            "_reqid": "1065213",
-        }
-        return form_data, params
-
-    def _search_with_pagination(
-        self, html: str, num: int, lang: str, country: str
-    ) -> List[AppOverview]:
-        results = self._parse_search_results(html, num)
-        if len(results) >= num:
-            return results[:num]
-
-        token = self._extract_search_token(html)
-        while token and len(results) < num:
-            form_data, params = self._build_search_pagination_request(token, lang, country)
-            response_text = self._requester.post(
-                "/_/PlayStoreUi/data/batchexecute", params=params, data=form_data
-            )
-            page_results, token = self._parse_paginated_search_results(response_text)
-            if not page_results:
-                break
-            results.extend(page_results)
-
-        return results[:num]
-
-    async def _asearch_with_pagination(
-        self, html: str, num: int, lang: str, country: str
-    ) -> List[AppOverview]:
-        results = self._parse_search_results(html, num)
-        if len(results) >= num:
-            return results[:num]
-
-        token = self._extract_search_token(html)
-        while token and len(results) < num:
-            form_data, params = self._build_search_pagination_request(token, lang, country)
-            response_text = await self._requester.apost(
-                "/_/PlayStoreUi/data/batchexecute", params=params, data=form_data
-            )
-            page_results, token = self._parse_paginated_search_results(response_text)
-            if not page_results:
-                break
-            results.extend(page_results)
-
-        return results[:num]
 
     def _parse_list_results(self, response_text: str) -> List[AppOverview]:
         data = ScriptDataParser.parse_batchexecute_response(response_text)
@@ -338,27 +238,8 @@ class GooglePlayClient:
             return []
 
         results = []
-        specs = {
-            "title": ElementSpec([0, 3]),
-            "app_id": ElementSpec([0, 0, 0]),
-            "url": ElementSpec(
-                [0, 10, 4, 2], transformer=lambda x: f"{Requester.BASE_URL}{x}"
-            ),
-            "icon": ElementSpec([0, 1, 3, 2]),
-            "developer": ElementSpec([0, 14]),
-            "developer_id": ElementSpec([0, 14]),
-            "currency": ElementSpec([0, 8, 1, 0, 1]),
-            "price": ElementSpec(
-                [0, 8, 1, 0, 0], transformer=lambda x: x / 1000000 if x else 0
-            ),
-            "free": ElementSpec([0, 8, 1, 0, 0], transformer=lambda x: x == 0),
-            "summary": ElementSpec([0, 13, 1]),
-            "score_text": ElementSpec([0, 4, 0]),
-            "score": ElementSpec([0, 4, 1]),
-        }
-
         for app_raw in apps_root:
-            extracted = extract_from_spec(app_raw, specs)
+            extracted = extract_from_spec(app_raw, OVERVIEW_SPECS)
             if extracted.get("app_id"):
                 results.append(AppOverview(**extracted))
 
@@ -444,11 +325,12 @@ class GooglePlayClient:
         lang: str = None,
         country: str = None,
     ) -> List[AppOverview]:
+        """Search apps. Play returns a single page, so `num` above ~30 gains nothing."""
         price_map = {"free": 1, "paid": 2, "all": 0}
         p_val = price_map.get(price, 0)
-        params = {"q": term, "price": p_val, "hl": lang, "gl": country}
-        html = self._requester.get("/work/search", params=params)
-        return self._search_with_pagination(html, num, lang, country)
+        params = {"q": term, "c": "apps", "price": p_val, "hl": lang, "gl": country}
+        html = self._requester.get("/store/search", params=params)
+        return self._parse_search_results(html, num)
 
     async def asearch(
         self,
@@ -460,9 +342,9 @@ class GooglePlayClient:
     ) -> List[AppOverview]:
         price_map = {"free": 1, "paid": 2, "all": 0}
         p_val = price_map.get(price, 0)
-        params = {"q": term, "price": p_val, "hl": lang, "gl": country}
-        html = await self._requester.aget("/work/search", params=params)
-        return await self._asearch_with_pagination(html, num, lang, country)
+        params = {"q": term, "c": "apps", "price": p_val, "hl": lang, "gl": country}
+        html = await self._requester.aget("/store/search", params=params)
+        return self._parse_search_results(html, num)
 
     def list(
         self,

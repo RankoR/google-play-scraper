@@ -144,6 +144,10 @@ for a in apps:
 
 `price` can be one of: `"all"` (default), `"free"`, `"paid"`.
 
+`num` caps the results. Google Play serves search results as a single page and no
+longer offers a "next page" for them, so a query yields roughly 20-30 apps no matter
+how large `num` is.
+
 
 ### List collections
 
@@ -210,7 +214,7 @@ print(suggestions)
 
 All return types are validated Pydantic models that are easy to consume and serialize.
 
-- `AppOverview`: minimal data used in lists/search (e.g., `title`, `app_id`, `score`, `icon`, `developer`)
+- `AppOverview`: minimal data used in lists/search (e.g., `title`, `app_id`, `score`, `icon`, `developer`). `developer_id` is only populated by `app()` — Play omits it from list and search payloads
 - `AppDetails`: extends `AppOverview` with rich metadata (e.g., `description`, `installs`, `histogram`, `price`, `genre`, `screenshots`, `updated`)
 - `Review`: normalized review entry (`score`, `text`, `user_name`, `thumbs_up`, dates, developer reply info)
 

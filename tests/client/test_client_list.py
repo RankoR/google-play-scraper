@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from google_play_scraper.client import GooglePlayClient
+from tests.fixtures import make_app_entry
 
 
 class ClientListTest(unittest.TestCase):
@@ -57,33 +58,10 @@ class ClientListTest(unittest.TestCase):
     def test_happy_path_extracts_app_overview_fields(self, mock_post, mock_parse):
         mock_post.return_value = "OK"
 
-        # Build two app entries according to specs paths
-        def make_app(app_id: str, title: str, price_micro: int, currency: str, free_expected: bool):
-            app = [None] * 15
-            # app_id at [0,0,0] -> inner[0] must be [app_id]
-            app[0] = [app_id]
-            # title at [0,3]
-            app[3] = title
-            # score_text and score at [0,4,0/1]
-            app[4] = ["4.5", 4.5]
-            # icon at [0,1,3,2]
-            app[1] = [None, None, None, [None, None, "https://img.test/icon.png"]]
-            # url path at [0,10,4,2] (joined with Requester.BASE_URL)
-            app[10] = [None] * 5
-            app[10][4] = [None, None, f"/store/apps/details?id={app_id}"]
-            # developer and developer_id at [0,14]
-            app[14] = f"{title} Dev"
-            # currency and price at [0,8,1,0,1] and [0,8,1,0,0]
-            app[8] = [None, [[price_micro, currency]]]
-            # summary at [0,13,1]
-            app[13] = [None, f"{title} summary"]
-            return app, free_expected
-
-        app1, free1 = make_app("com.example.one", "One", 0, "USD", True)
-        app2, free2 = make_app("com.example.two", "Two", 1990000, "USD", False)
-
-        # Each app_raw element should be [inner]
-        apps_list = [[app1], [app2]]
+        apps_list = [
+            make_app_entry("com.example.one", "One"),
+            make_app_entry("com.example.two", "Two", 1990000, "$1.99"),
+        ]
 
         arr_with_29 = [None] * 29
         arr_with_29[28] = [apps_list]  # [28][0] -> apps_list
@@ -103,7 +81,8 @@ class ClientListTest(unittest.TestCase):
         self.assertEqual(r1.title, "One")
         self.assertEqual(str(r1.icon), "https://img.test/icon.png")
         self.assertEqual(r1.developer, "One Dev")
-        self.assertEqual(r1.developer_id, "One Dev")
+        # Play does not ship a developer id in list/search entries.
+        self.assertIsNone(r1.developer_id)
         self.assertTrue(r1.free)
         self.assertEqual(r1.summary, "One summary")
         self.assertEqual(r1.score_text, "4.5")
@@ -113,6 +92,7 @@ class ClientListTest(unittest.TestCase):
         self.assertEqual(r2.app_id, "com.example.two")
         self.assertEqual(r2.title, "Two")
         self.assertFalse(r2.free)
+        self.assertEqual(r2.price_text, "$1.99")
         self.assertEqual(r2.summary, "Two summary")
 
     @patch("google_play_scraper.client.ScriptDataParser.parse_batchexecute_response")

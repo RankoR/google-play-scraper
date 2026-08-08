@@ -2,20 +2,7 @@ import unittest
 from unittest.mock import patch, AsyncMock, Mock
 
 from google_play_scraper.client import GooglePlayClient
-
-
-def make_app(app_id: str, title: str, price_micro: int, currency: str):
-    app = [None] * 15
-    app[0] = [app_id]
-    app[3] = title
-    app[4] = ["4.5", 4.5]
-    app[1] = [None, None, None, [None, None, "https://img.test/icon.png"]]
-    app[10] = [None] * 5
-    app[10][4] = [None, None, f"/store/apps/details?id={app_id}"]
-    app[14] = f"{title} Dev"
-    app[8] = [None, [[price_micro, currency]]]
-    app[13] = [None, f"{title} summary"]
-    return app
+from tests.fixtures import make_app_entry
 
 
 class TestAsyncClientList(unittest.IsolatedAsyncioTestCase):
@@ -68,9 +55,10 @@ class TestAsyncClientList(unittest.IsolatedAsyncioTestCase):
         return_value="OK",
     )
     async def test_happy_path_extracts_app_overview_fields(self, mock_apost, mock_parse):
-        app1 = make_app("com.example.one", "One", 0, "USD")
-        app2 = make_app("com.example.two", "Two", 1990000, "USD")
-        apps_list = [[app1], [app2]]
+        apps_list = [
+            make_app_entry("com.example.one", "One"),
+            make_app_entry("com.example.two", "Two", 1990000, "$1.99"),
+        ]
         arr_with_29 = [None] * 29
         arr_with_29[28] = [apps_list]
         data = [[None, [arr_with_29]]]
@@ -84,7 +72,8 @@ class TestAsyncClientList(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r1.title, "One")
         self.assertEqual(str(r1.icon), "https://img.test/icon.png")
         self.assertEqual(r1.developer, "One Dev")
-        self.assertEqual(r1.developer_id, "One Dev")
+        # Play does not ship a developer id in list/search entries.
+        self.assertIsNone(r1.developer_id)
         self.assertTrue(r1.free)
         self.assertEqual(r1.summary, "One summary")
         self.assertEqual(r1.score_text, "4.5")
@@ -92,6 +81,7 @@ class TestAsyncClientList(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r2.app_id, "com.example.two")
         self.assertEqual(r2.title, "Two")
         self.assertFalse(r2.free)
+        self.assertEqual(r2.price_text, "$1.99")
         self.assertEqual(r2.summary, "Two summary")
 
     @patch(

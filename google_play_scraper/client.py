@@ -1,7 +1,7 @@
 import json
 import re
 from datetime import datetime
-from typing import Optional, List, Union, Dict, Any
+from typing import Optional, List, Union, Dict, Any, Iterator
 
 import httpx
 
@@ -33,31 +33,61 @@ def _is_app_entry(item: Any) -> bool:
     ) and isinstance(OVERVIEW_SPECS["title"].extract(item), str)
 
 
-def _find_app_cluster(node: Any) -> Optional[list]:
-    """Locate the list of app entries in a parsed search page.
+# A search page can feature one app above the ordinary results. The card uses
+# app-details fields, not OVERVIEW_SPECS (observed on US xbxplay, 2026-10-10).
+# Paths are relative to the card's [23][16] payload within a search section.
+FEATURED_SEARCH_SPECS = {
+    "app_id": ElementSpec([3, "12", 0, 0]),
+    "title": ElementSpec([2, 0, 0]),
+    "icon": ElementSpec([2, 95, 0, 3, 2]),
+    "developer": ElementSpec([2, 68, 0]),
+    "score": ElementSpec([2, 51, 0, 1]),
+    "score_text": ElementSpec([2, 51, 0, 0]),
+    "price_text": ElementSpec([2, 57, 0, 0, 0, 0, 1, 0, 2]),
+    "free": ElementSpec(
+        [2, 57, 0, 0, 0, 0, 1, 0, 0], transformer=lambda x: x == 0
+    ),
+    "summary": ElementSpec([2, 73, 0, 1]),
+}
 
-    Its position moves between queries and locales (seen at ds:4[0][1][0][22][0]
-    and ds:4[0][1][1][22][0]), so match on shape rather than a fixed path.
+
+def _iter_search_entries(node: Any) -> Iterator[dict]:
+    """Yield featured cards and ordinary clusters in display order.
+
+    The featured card is stored after its recommendations in the page data,
+    although Play renders it first. Ordinary clusters move between queries
+    and locales, so locate those by shape rather than their absolute path.
     """
     if isinstance(node, list):
+        featured = extract_from_spec(
+            ElementSpec([23, 16]).extract(node), FEATURED_SEARCH_SPECS
+        )
+        has_featured = isinstance(featured["app_id"], str) and isinstance(
+            featured["title"], str
+        )
+        if has_featured:
+            yield featured
+
         # Tolerate filler entries (ads, separators) mixed into the cluster.
         if (
             node
-            and all(isinstance(item, list) for item in node)
             and any(_is_app_entry(item) for item in node)
         ):
-            return node
-        children = node
+            for item in node:
+                if _is_app_entry(item):
+                    yield extract_from_spec(item, OVERVIEW_SPECS)
+            return
+        children = (
+            child for index, child in enumerate(node)
+            if not (has_featured and index == 23)
+        )
     elif isinstance(node, dict):
         children = node.values()
     else:
-        return None
+        return
 
     for child in children:
-        found = _find_app_cluster(child)
-        if found:
-            return found
-    return None
+        yield from _iter_search_entries(child)
 
 
 def _build_proxy_mounts(
@@ -212,15 +242,20 @@ class GooglePlayClient:
         return AppDetails(**data)
 
     def _parse_search_results(self, html: str, num: int) -> List[AppOverview]:
-        cluster = _find_app_cluster(ScriptDataParser.parse(html))
-        if not cluster:
+        if num <= 0:
             return []
-
+        data_map = ScriptDataParser.parse(html)
+        # Restrict traversal to search data rather than unrelated page datasets.
+        search_data = data_map.get("ds:4", data_map)
         results = []
-        for item in cluster[:num]:
-            data = extract_from_spec(item, OVERVIEW_SPECS)
-            if data.get("app_id"):
-                results.append(AppOverview(**data))
+        seen = set()
+        for data in _iter_search_entries(search_data):
+            if data["app_id"] in seen:
+                continue
+            results.append(AppOverview(**data))
+            seen.add(data["app_id"])
+            if len(results) == num:
+                break
         return results
 
     def _parse_list_results(self, response_text: str) -> List[AppOverview]:

@@ -46,6 +46,11 @@ for app in results:
     print(app.title, app.score)
 ```
 
+Search includes a featured app card before the ordinary results when Play
+shows one. Apps are deduplicated by package ID before applying `num`. The
+returned order describes the fetched web page, not a guaranteed ranking on
+every user's device; country, language and personalization can affect it.
+
 
 ## Async Usage
 
